@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flipkart Label Cropper</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Seller Tools By Suraj Bisht</p>
+    <h1>Flipkart Label Cropper</h1>
+    <p class="sub">Apne shipping label PDFs upload karo — har page automatically same fixed area se crop ho jayega aur sab pages ek hi PDF me combine ho jayenge. Sab kuch browser me hi hota hai, koi file kahin upload nahi hoti.</p>
+    <div class="crop-tag">
+      CROP &nbsp;→&nbsp; x:<b>185</b> &nbsp;y:<b>23</b> &nbsp;w:<b>225</b> &nbsp;h:<b>365</b>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab-btn active" data-tab="crop">Crop Labels</div>
+    <div class="tab-btn" data-tab="merge">Merge PDFs</div>
+  </div>
+
+  <!-- CROP TAB -->
+  <div class="tab-panel active" id="tab-crop">
+    <div class="panel">
+      <div class="drop" id="dropZoneCrop">
+        <div class="big">PDF files yaha drop karo ya click karke choose karo</div>
+        <div class="small">Multiple files ek saath select kar sakte ho — sab pages ek combined PDF me crop hoke aayenge</div>
+        <input type="file" id="fileInputCrop" accept="application/pdf" multiple>
+      </div>
+
+      <div class="summary-bar" id="summaryCrop" style="display:none;">
+        <div class="stat"><span>Files</span><b id="statFiles">0</b></div>
+        <div class="stat"><span>Total Pages</span><b id="statPages">0</b></div>
+      </div>
+
+      <div class="file-list" id="fileListCrop"></div>
+
+      <div class="progress-wrap" id="progressWrapCrop">
+        <div class="bar-track"><div class="bar-fill" id="barFillCrop"></div></div>
+        <div class="progress-label" id="progressLabelCrop"></div>
+      </div>
+
+      <div class="result-box" id="resultBoxCrop">
+        <div class="info"><b id="resultPagesCrop">0 pages</b> ek single PDF me crop ho gayi</div>
+        <button class="btn-primary" id="downloadCroppedBtn">Cropped PDF download karo</button>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" id="cropBtn" disabled>Crop &amp; Combine karo</button>
+        <button class="btn-ghost" id="clearBtnCrop">Sab clear karo</button>
+      </div>
+
+      <p class="hint">Note: crop coordinates PDF page ko 72 DPI (1 point = 1 px) maan ke fixed hain. Agar aapke Flipkart label ka page size badalta hai to result me farak aa sakta hai — us case me bata dena, main coordinates ko page-size ke hisaab se adjust kar dunga.</p>
+    </div>
+  </div>
+
+  <!-- MERGE TAB -->
+  <div class="tab-panel" id="tab-merge">
+    <div class="panel">
+      <div class="drop" id="dropZoneMerge">
+        <div class="big">PDF files yaha drop karo ya click karke choose karo</div>
+        <div class="small">Bina crop kiye, sab PDFs ek single file me jod denge — order list me drag karke set kar sakte ho</div>
+        <input type="file" id="fileInputMerge" accept="application/pdf" multiple>
+      </div>
+
+      <div class="summary-bar" id="summaryMerge" style="display:none;">
+        <div class="stat"><span>Files</span><b id="statFilesMerge">0</b></div>
+        <div class="stat"><span>Total Pages</span><b id="statPagesMerge">0</b></div>
+      </div>
+
+      <div class="file-list" id="fileListMerge"></div>
+
+      <div class="progress-wrap" id="progressWrapMerge">
+        <div class="bar-track"><div class="bar-fill" id="barFillMerge"></div></div>
+        <div class="progress-label" id="progressLabelMerge"></div>
+      </div>
+
+      <div class="result-box" id="resultBoxMerge">
+        <div class="info"><b id="resultPagesMerge">0 pages</b> ek single PDF me merge ho gaye</div>
+        <button class="btn-primary" id="downloadMergedBtn">Merged PDF download karo</button>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" id="mergeBtn" disabled>Merge karo</button>
+        <button class="btn-ghost" id="clearBtnMerge">Sab clear karo</button>
+      </div>
+
+      <p class="hint">Tip: file row ko drag karke order badal sakte ho — wahi order final merged PDF me hoga.</p>
+    </div>
+  </div>
+
+  <footer>Sab processing aapke browser me local hoti hai · koi file server pe nahi jaati</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script>
+// ====================== Shared tab switching ======================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ====================== CROP TAB LOGIC ======================
+const CROP = { sx: 185, sy: 23, sw: 225, sh: 365 };
+
+const fileInputCrop = document.getElementById('fileInputCrop');
+const dropZoneCrop = document.getElementById('dropZoneCrop');
+const fileListCropEl = document.getElementById('fileListCrop');
+const cropBtn = document.getElementById('cropBtn');
+const clearBtnCrop = document.getElementById('clearBtnCrop');
+const progressWrapCrop = document.getElementById('progressWrapCrop');
+const barFillCrop = document.getElementById('barFillCrop');
+const progressLabelCrop = document.getElementById('progressLabelCrop');
+const summaryCrop = document.getElementById('summaryCrop');
+const statFiles = document.getElementById('statFiles');
+const statPages = document.getElementById('statPages');
+const resultBoxCrop = document.getElementById('resultBoxCrop');
+const resultPagesCrop = document.getElementById('resultPagesCrop');
+const downloadCroppedBtn = document.getElementById('downloadCroppedBtn');
+
+let cropEntries = []; // { id, file, status, pageCount, error }
+let cropIdCounter = 0;
+let combinedCroppedBytes = null;
+
+async function getPageCount(file){
+  const buf = await file.arrayBuffer();
+  const doc = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+  return doc.getPageCount();
+}
+
+async function addCropFiles(fileArr){
+  for(const f of fileArr){
+    if(f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) continue;
+    const entry = { id: cropIdCounter++, file: f, status: 'pending', pageCount: null, error: null };
+    cropEntries.push(entry);
+    renderCropList();
+    try{
+      entry.pageCount = await getPageCount(f);
+    }catch(err){
+      entry.pageCount = 0;
+      entry.error = 'Could not read pages';
+    }
+    renderCropList();
+  }
+}
+
+function renderCropList(){
+  fileListCropEl.innerHTML = '';
+  let totalPages = 0;
+  for(const e of cropEntries){
+    if(e.pageCount) totalPages += e.pageCount;
+
+    const row = document.createElement('div');
+    row.className = 'file-row';
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = e.file.name;
+
+    const pages = document.createElement('div');
+    pages.className = 'pages';
+    pages.textContent = e.pageCount === null ? 'reading...' : (e.pageCount + ' pages');
+
+    const status = document.createElement('div');
+    status.className = 'status ' + e.status;
+    status.textContent = statusLabel(e.status);
+
+    const remove = document.createElement('div');
+    remove.className = 'remove';
+    remove.textContent = '✕';
+    remove.title = 'Remove';
+    remove.onclick = () => { cropEntries = cropEntries.filter(x => x.id !== e.id); renderCropList(); };
+
+    row.appendChild(name);
+    row.appendChild(pages);
+    row.appendChild(status);
+    row.appendChild(remove);
+    fileListCropEl.appendChild(row);
+  }
+
+  if(cropEntries.length > 0){
+    summaryCrop.style.display = 'flex';
+    statFiles.textContent = cropEntries.length;
+    statPages.textContent = totalPages;
+  } else {
+    summaryCrop.style.display = 'none';
+  }
+
+  cropBtn.disabled = cropEntries.length === 0;
+}
+
+function statusLabel(s){
+  if(s === 'pending') return 'Pending';
+  if(s === 'working') return 'Cropping...';
+  if(s === 'done') return 'Done';
+  if(s === 'error') return 'Error';
+  return s;
+}
+
+dropZoneCrop.addEventListener('click', () => fileInputCrop.click());
+fileInputCrop.addEventListener('change', (ev) => { addCropFiles(ev.target.files); fileInputCrop.value=''; });
+['dragenter','dragover'].forEach(evt => dropZoneCrop.addEventListener(evt, e=>{e.preventDefault(); dropZoneCrop.classList.add('drag');}));
+['dragleave','drop'].forEach(evt => dropZoneCrop.addEventListener(evt, e=>{e.preventDefault(); dropZoneCrop.classList.remove('drag');}));
+dropZoneCrop.addEventListener('drop', e => { if(e.dataTransfer.files?.length) addCropFiles(e.dataTransfer.files); });
+
+clearBtnCrop.addEventListener('click', () => {
+  cropEntries = [];
+  combinedCroppedBytes = null;
+  renderCropList();
+  progressWrapCrop.classList.remove('show');
+  resultBoxCrop.classList.remove('show');
+});
+
+cropBtn.addEventListener('click', async () => {
+  if(cropEntries.length === 0) return;
+
+  cropBtn.disabled = true;
+  progressWrapCrop.classList.add('show');
+  resultBoxCrop.classList.remove('show');
+
+  const outDoc = await PDFLib.PDFDocument.create();
+  let totalPagesPlanned = cropEntries.reduce((s,e)=> s + (e.pageCount||0), 0);
+  let pagesDone = 0;
+
+  for(const e of cropEntries){
+    e.status = 'working';
+    renderCropList();
+    try{
+      const arrayBuf = await e.file.arrayBuffer();
+      const srcDoc = await PDFLib.PDFDocument.load(arrayBuf, { ignoreEncryption: true });
+      const pageCount = srcDoc.getPageCount();
+
+      for(let i = 0; i < pageCount; i++){
+        const [embeddedPage] = await outDoc.embedPdf(srcDoc, [i]);
+        const newPage = outDoc.addPage([CROP.sw, CROP.sh]);
+
+        const srcPageHeight = embeddedPage.height;
+        const drawX = -CROP.sx;
+        const drawY = CROP.sy + CROP.sh - srcPageHeight;
+
+        newPage.drawPage(embeddedPage, {
+          x: drawX,
+          y: drawY,
+          width: embeddedPage.width,
+          height: embeddedPage.height
+        });
+
+        pagesDone++;
+        const pct = totalPagesPlanned ? Math.round((pagesDone/totalPagesPlanned)*100) : 0;
+        barFillCrop.style.width = pct + '%';
+        progressLabelCrop.textContent = `${pagesDone} / ${totalPagesPlanned} pages cropped`;
+      }
+      e.status = 'done';
+    }catch(err){
+      console.error(err);
+      e.error = err.message || 'Unknown error';
+      e.status = 'error';
+    }
+    renderCropList();
+  }
+
+  combinedCroppedBytes = await outDoc.save();
+  const finalPageCount = outDoc.getPageCount();
+
+  cropBtn.disabled = false;
+  progressLabelCrop.textContent = `Done — ${finalPageCount} pages combined`;
+  resultPagesCrop.textContent = finalPageCount + (finalPageCount === 1 ? ' page' : ' pages');
+  resultBoxCrop.classList.add('show');
+});
+
+downloadCroppedBtn.addEventListener('click', () => {
+  if(!combinedCroppedBytes) return;
+  triggerDownload(combinedCroppedBytes, 'flipkart_labels_cropped.pdf');
+});
+
+function triggerDownload(bytes, filename){
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// ====================== MERGE TAB LOGIC ======================
+const fileInputMerge = document.getElementById('fileInputMerge');
+const dropZoneMerge = document.getElementById('dropZoneMerge');
+const fileListMergeEl = document.getElementById('fileListMerge');
+const mergeBtn = document.getElementById('mergeBtn');
+const clearBtnMerge = document.getElementById('clearBtnMerge');
+const progressWrapMerge = document.getElementById('progressWrapMerge');
+const barFillMerge = document.getElementById('barFillMerge');
+const progressLabelMerge = document.getElementById('progressLabelMerge');
+const summaryMerge = document.getElementById('summaryMerge');
+const statFilesMerge = document.getElementById('statFilesMerge');
+const statPagesMerge = document.getElementById('statPagesMerge');
+const resultBoxMerge = document.getElementById('resultBoxMerge');
+const resultPagesMerge = document.getElementById('resultPagesMerge');
+const downloadMergedBtn = document.getElementById('downloadMergedBtn');
+
+let mergeEntries = []; // { id, file, pageCount }
+let mergeIdCounter = 0;
+let mergedBytes = null;
+let dragSrcId = null;
+
+async function addMergeFiles(fileArr){
+  for(const f of fileArr){
+    if(f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) continue;
+    const entry = { id: mergeIdCounter++, file: f, pageCount: null };
+    mergeEntries.push(entry);
+    renderMergeList();
+    try{
+      entry.pageCount = await getPageCount(f);
+    }catch(err){
+      entry.pageCount = 0;
+    }
+    renderMergeList();
+  }
+}
+
+function renderMergeList(){
+  fileListMergeEl.innerHTML = '';
+  let totalPages = 0;
+  for(const e of mergeEntries){
+    if(e.pageCount) totalPages += e.pageCount;
+
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.draggable = true;
+    row.dataset.id = e.id;
+
+    row.addEventListener('dragstart', () => { dragSrcId = e.id; row.classList.add('dragging'); });
+    row.addEventListener('dragend', () => { row.classList.remove('dragging'); });
+    row.addEventListener('dragover', (ev) => ev.preventDefault());
+    row.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      if(dragSrcId === null || dragSrcId === e.id) return;
+      const fromIdx = mergeEntries.findIndex(x => x.id === dragSrcId);
+      const toIdx = mergeEntries.findIndex(x => x.id === e.id);
+      const [moved] = mergeEntries.splice(fromIdx, 1);
+      mergeEntries.splice(toIdx, 0, moved);
+      renderMergeList();
+    });
+
+    const handle = document.createElement('div');
+    handle.className = 'drag-handle';
+    handle.textContent = '⠿';
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = e.file.name;
+
+    const pages = document.createElement('div');
+    pages.className = 'pages';
+    pages.textContent = e.pageCount === null ? 'reading...' : (e.pageCount + ' pages');
+
+    const remove = document.createElement('div');
+    remove.className = 'remove';
+    remove.textContent = '✕';
+    remove.title = 'Remove';
+    remove.onclick = () => { mergeEntries = mergeEntries.filter(x => x.id !== e.id); renderMergeList(); };
+
+    row.appendChild(handle);
+    row.appendChild(name);
+    row.appendChild(pages);
+    row.appendChild(remove);
+    fileListMergeEl.appendChild(row);
+  }
+
+  if(mergeEntries.length > 0){
+    summaryMerge.style.display = 'flex';
+    statFilesMerge.textContent = mergeEntries.length;
+    statPagesMerge.textContent = totalPages;
+  } else {
+    summaryMerge.style.display = 'none';
+  }
+
+  mergeBtn.disabled = mergeEntries.length < 2;
+}
+
+dropZoneMerge.addEventListener('click', () => fileInputMerge.click());
+fileInputMerge.addEventListener('change', (ev) => { addMergeFiles(ev.target.files); fileInputMerge.value=''; });
+['dragenter','dragover'].forEach(evt => dropZoneMerge.addEventListener(evt, e=>{e.preventDefault(); dropZoneMerge.classList.add('drag');}));
+['dragleave','drop'].forEach(evt => dropZoneMerge.addEventListener(evt, e=>{e.preventDefault(); dropZoneMerge.classList.remove('drag');}));
+dropZoneMerge.addEventListener('drop', e => { if(e.dataTransfer.files?.length) addMergeFiles(e.dataTransfer.files); });
+
+clearBtnMerge.addEventListener('click', () => {
+  mergeEntries = [];
+  mergedBytes = null;
+  renderMergeList();
+  progressWrapMerge.classList.remove('show');
+  resultBoxMerge.classList.remove('show');
+});
+
+mergeBtn.addEventListener('click', async () => {
+  if(mergeEntries.length < 2) return;
+
+  mergeBtn.disabled = true;
+  progressWrapMerge.classList.add('show');
+  resultBoxMerge.classList.remove('show');
+
+  const outDoc = await PDFLib.PDFDocument.create();
+  let done = 0;
+  const total = mergeEntries.length;
+
+  for(const e of mergeEntries){
+    try{
+      const arrayBuf = await e.file.arrayBuffer();
+      const srcDoc = await PDFLib.PDFDocument.load(arrayBuf, { ignoreEncryption: true });
+      const pages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+      pages.forEach(p => outDoc.addPage(p));
+    }catch(err){
+      console.error('merge error for', e.file.name, err);
+    }
+    done++;
+    const pct = Math.round((done/total)*100);
+    barFillMerge.style.width = pct + '%';
+    progressLabelMerge.textContent = `${done} / ${total} files merged`;
+  }
+
+  mergedBytes = await outDoc.save();
+  const finalPageCount = outDoc.getPageCount();
+
+  mergeBtn.disabled = false;
+  progressLabelMerge.textContent = `Done — ${finalPageCount} pages combined`;
+  resultPagesMerge.textContent = finalPageCount + (finalPageCount === 1 ? ' page' : ' pages');
+  resultBoxMerge.classList.add('show');
+});
+
+downloadMergedBtn.addEventListener('click', () => {
+  if(!mergedBytes) return;
+  triggerDownload(mergedBytes, 'merged.pdf');
+});
+</script>
+</body>
+</html>
