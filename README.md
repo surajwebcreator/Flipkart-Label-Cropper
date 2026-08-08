@@ -1,4 +1,4 @@
 ﻿# Flipkart-Label-Cropper
 ## url is
 
-https://surajwebcreator.github.io/Flipkart-Label-Cropper/
+https:// your name ...github.io/Flipkart-Label-Cropper/
