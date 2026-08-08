@@ -1,4 +1,4 @@
 ﻿# Flipkart-Label-Cropper
 ## url is
 
-https:// your name ...github.io/Flipkart-Label-Cropper/
+https://your_name.github.io/Flipkart-Label-Cropper/
